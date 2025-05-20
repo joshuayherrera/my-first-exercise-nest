@@ -2,61 +2,52 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { Task } from './entities/task.entity';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
 @Injectable()
 export class TasksService {
+  constructor(
+    @InjectRepository(Task)
+    private tasksRepository: Repository<Task>,
+  ) {}
 
-  // Simulating a database with an in-memory array
-  private tasks: Task[] = [
-    { id: 1, title: 'Aprender NestJS Controladores', description: 'Entender cómo funcionan los controladores y rutas.', isDone: true },
-    { id: 2, title: 'Practicar con Hoppscotch', description: 'Probar todos los endpoints de la API.', isDone: false },
-  ];
-  private nextId = 3; // Simulating an auto-incrementing ID
-
-  create(createTaskDto: CreateTaskDto): Task {
-    const newTask: Task = {
-      id: this.nextId++,
-      title: createTaskDto.title || 'Default Title',
-      description: createTaskDto.description || '',
-      isDone: false,
-    };
-    this.tasks.push(newTask);
+  async create(createTaskDto: CreateTaskDto): Promise<Task> {
+    const newTask = this.tasksRepository.create({
+      ...createTaskDto,
+      isDone: false, // Default value
+    });
+    await this.tasksRepository.save(newTask); // Save the new task to the database
     return newTask;
   }
 
-  findAll(): Task[] {
-    return this.tasks;
+  async findAll(): Promise<Task[]> {
+    return this.tasksRepository.find(); // Fetch all tasks from the database
   }
 
-  findOne(id: number): Task {
-    const task = this.tasks.find(task => task.id === id);
+  async findOne(id: number): Promise<Task> {
+    const task = await this.tasksRepository.findOneBy({ id }); 
     if (!task) {
       throw new NotFoundException(`Task with ID ${id} not found`);
     }
     return task;
   }
 
-  update(id: number, updateTaskDto: UpdateTaskDto): Task {
-    const task = this.findOne(id); // Verify if the task exists
-    if (updateTaskDto.title !== undefined) {
-      task.title = updateTaskDto.title;
+  async update(id: number, updateTaskDto: UpdateTaskDto): Promise<Task> {
+    const task = await this.tasksRepository.preload({
+      id: id,
+      ...updateTaskDto,
+    });
+    if (!task) {
+      throw new NotFoundException(`Task with ID ${id} not found to update`);
     }
-    if (updateTaskDto.description !== undefined) {
-      task.description = updateTaskDto.description;
-    }
-    if (updateTaskDto.isDone !== undefined) {
-      task.isDone = updateTaskDto.isDone;
-    }
-    return task;
+    return this.tasksRepository.save(task); // Save the updated task to the database
   }
 
-  remove(id: number): { message: string } {
-    const taskIndex = this.tasks.findIndex(task => task.id === id);
-    if (taskIndex === -1) {
-      throw new NotFoundException(`Task with ID ${id} not found`);
+  async remove(id: number): Promise<void> {
+    const result = await this.tasksRepository.delete(id);
+    if (result.affected === 0) {
+      throw new NotFoundException(`Task with ID ${id} not found to delete`);
     }
-    this.tasks.splice(taskIndex, 1);
-    console.log(`Tarea con ID ${id} eliminada.`);
-    return { message: `Tarea con ID ${id} eliminada exitosamente.` };
   }
 }
